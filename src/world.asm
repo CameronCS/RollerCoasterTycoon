@@ -3,10 +3,11 @@
 
 %include "defs.inc"
 
-global cash, cur_x, cur_y, day, dir_dx, dir_dy, drag, game_over, guest_count, guests, handy_n
-global handymen, height, map, msg_buf, n_handy, n_landscape, n_water, next_id, paused, post_msg
-global rail_at, rand_n, rating, ride_count, rng, swept, tick, tile_at, tile_cost, tile_joy
-global tile_name, tile_nausea, tile_ticket, tile_upkeep, tool, tool_tile, visitors
+global broken, cash, cur_x, cur_y, day, dir_dx, dir_dy, drag, game_over, guest_count, guests
+global handy_n, handymen, height, map, mech_n, msg_buf, n_handy, n_landscape, n_mech, n_water
+global next_id, paused, post_msg, price, rail_at, rand_n, rating, ride_count, rng, swept, tick
+global tile_at, tile_cost, tile_joy, tile_name, tile_nausea, tile_ticket, tile_upkeep, tool
+global tool_tile, visitors
 extern sprintf
 
 section .rdata
@@ -15,12 +16,12 @@ dir_dy      db -1, 0, 1, 0
 
 ;                grass path entr stat ferris carou food tree puke track
 tile_cost   dd   0,    10,  0,   200, 300,   150,  80,  15,  10,  40
-tile_ticket dd   0,    0,   0,   0,   4,     3,    4,   0,   0,   0
+tile_ticket dd   0,    0,   0,   10,  4,     3,    4,   0,   0,   0
 tile_joy    dd   0,    0,   0,   0,   20,    15,   10,  0,   0,   0
 tile_upkeep dd   0,    0,   0,   20,  15,    8,    4,   0,   0,   2
 tile_nausea dd   0,    0,   0,   0,   8,     12,   0,   0,   0,   0
 tile_name   dq n_grass, n_path, n_entrance, n_station, n_ferris, n_carousel, n_food, n_tree, n_puke, n_track
-tool_tile   db T_PATH, T_STATION, T_TRACK, T_FERRIS, T_CAROUSEL, T_FOOD, T_TREE, TOOL_RAISE, TOOL_LOWER, TOOL_HANDY, T_GRASS   ; T_GRASS = demolish
+tool_tile   db T_PATH, T_STATION, T_TRACK, T_FERRIS, T_CAROUSEL, T_FOOD, T_TREE, TOOL_RAISE, TOOL_LOWER, TOOL_HANDY, TOOL_MECH, T_GRASS   ; T_GRASS = demolish
 n_grass     db "Grass", 0
 n_path      db "Path", 0
 n_entrance  db "Park entrance", 0
@@ -32,6 +33,7 @@ n_tree      db "Tree", 0
 n_puke      db "Vomit-covered path", 0
 n_track     db "Coaster track", 0
 n_handy     db "A handyman", 0
+n_mech      db "A mechanic", 0
 n_water     db "Water", 0
 n_landscape db "Landscaping", 0
 
@@ -53,9 +55,12 @@ guest_count resd 1
 ride_count  resd 1
 rating      resd 1
 handy_n     resd 1
+mech_n      resd 1
 swept       resd 1
 map         resb MAP_SIZE
 height      resb MAP_SIZE           ; land height of each tile, 0-MAX_H
+broken      resb MAP_SIZE           ; 1 on a ride tile that has broken down
+price       resb MAP_SIZE           ; ticket price of the ride on each tile
 handymen    resb MAX_HANDY * HANDY_SIZE
 guests      resb MAX_GUESTS * GUEST_SIZE
 msg_buf     resb 256

@@ -11,6 +11,10 @@ A small theme-park sim in the spirit of *RollerCoaster Tycoon*, written the way 
 - **Flat rides and shops:** Ferris wheels, carousels and food stalls.
 - **Guests** pay to get in, walk the paths, and ride whatever is next to the path they're on. They get hungry, bored and queasy, throw up on your paths, and go home when they're broke or miserable.
 - **Handymen** walk the paths and sweep up vomit, for a daily wage.
+- **Breakdowns and mechanics.** Rides break down now and then, coasters most often. Mechanics find the shortest walk to a broken ride and repair it.
+- **Ticket prices you set.** Every ride has a price, and a value guests judge it by: fixed for flat rides, based on excitement for coasters. Overcharge and guests walk away.
+- **Sound effects** generated in code when the game starts, with no sound files: build thunks, coaster screams, splats, breakdowns, repairs, fanfares and the day's takings.
+- **An options screen** for sound volume, game speed and grid lines, saved in `options.cfg`.
 - **Landscaping:** raise and lower the land. Land lowered below sea level floods.
 - **Money:** admissions and ticket sales come in, and ride upkeep and staff wages go out every day.
 - **A scenario to beat:** have 50 guests in the park at the end of day 40 without going bankrupt.
@@ -25,7 +29,10 @@ A small theme-park sim in the spirit of *RollerCoaster Tycoon*, written the way 
 | Toolbar, or `1`–`9`, `0`, `X` | Pick a tool |
 | Arrows / `WASD`, `Space` | Move the cursor and build from the keyboard |
 | `B` | Toggle drag-build for keyboard building |
+| Scroll wheel / `+` `-` | Change the ticket price of the ride under the cursor |
 | `P` | Pause |
+| `O` | Options: volume, game speed, grid lines |
+| `N` | Sound on / off |
 | `F5` / `F9` | Save the park to `park.sav` / load it back |
 | `R` | Restart after the scenario ends |
 | `Esc` / `Q` | Quit |
@@ -42,6 +49,7 @@ A small theme-park sim in the spirit of *RollerCoaster Tycoon*, written the way 
 | `8` | Raise land | $20 |
 | `9` | Lower land | $20 |
 | `0` | Hire handyman | $100, then $10/day |
+| `M` | Hire mechanic | $150, then $15/day |
 | `X` | Demolish | refunds half the cost |
 
 ## Tips
@@ -50,6 +58,8 @@ A small theme-park sim in the spirit of *RollerCoaster Tycoon*, written the way 
 - Guests can only climb **one level at a time**. Paths up a hill need gradual steps.
 - A coaster only opens once its track **loops back into the station**. Hover over any piece of track to see why a coaster isn't open, or to see its stats.
 - Big drops and long twisty circuits bring in the most money, but also the most vomit. Hire handymen before your paths get disgusting.
+- A broken ride earns nothing and annoys everyone who wanted it. Keep a mechanic or two around once you have a few rides.
+- Hover over a ride to see its price next to what it's worth. Pricing a little above its value earns more per rider, but more guests walk away.
 
 ## Building
 
@@ -80,9 +90,13 @@ This assembles every module in `src\` into `build\` and links `tycoon.exe`. The 
 | `src/ui.asm` | Header, toolbar, info lines, text, composing each frame |
 | `src/input.asm` | Keyboard and mouse |
 | `src/save.asm` | Saving and loading `park.sav` |
+| `src/rides.asm` | Breakdowns, repairs, ticket prices |
+| `src/staff.asm` | Handymen and mechanics |
+| `src/sound.asm` | Sound effects, synthesised at startup |
+| `src/options.asm` | The options screen and `options.cfg` |
 | `src/main.asm` | Window, message loop, startup |
 
-The whole game is hand-written assembly, following the Windows x64 calling convention. It links against the C runtime for `sprintf`, which formats text, and uses the Win32 API for the window and GDI.
+The whole game is hand-written assembly, following the Windows x64 calling convention. It links against the C runtime for `sprintf` (to format text) and file I/O, and uses the Win32 API for the window, GDI for drawing, and `PlaySound` for audio.
 
 ## License
 

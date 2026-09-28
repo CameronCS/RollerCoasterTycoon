@@ -2,12 +2,17 @@
 
 %include "defs.inc"
 
-global ldrag, on_key, on_mouse_down, on_mouse_move, rdrag
-extern build, cur_x, cur_y, demolish_here, drag, game_over, init_game, load_game, paused, pick_tile
-extern running, save_game, tool
+global ldrag, on_key, on_mouse_down, on_mouse_move, on_wheel, rdrag
+extern build, change_price, cur_x, cur_y, demolish_here, drag, game_over, init_game, load_game
+extern options_click, options_open, paused, pick_tile, running, save_game, toggle_options
+extern toggle_sound, tool
 
 VK_F5             equ 0x74
 VK_F9             equ 0x78
+VK_ADD            equ 0x6B              ; numpad +
+VK_SUBTRACT       equ 0x6D              ; numpad -
+VK_OEM_PLUS       equ 0xBB              ; =/+ key
+VK_OEM_MINUS      equ 0xBD
 
 section .bss
 alignb 16
@@ -21,6 +26,16 @@ on_key:
     push    rbx
     sub     rsp, 32
     mov     ebx, ecx
+    cmp     ebx, 'O'
+    je      .options
+    cmp     dword [options_open], 0
+    je      .game_keys
+    cmp     ebx, 0x1B               ; with the options screen up, Esc just closes it
+    jne     .done
+.options:
+    call    toggle_options
+    jmp     .done
+.game_keys:
     cmp     ebx, 0x1B               ; Esc
     je      .quit
     cmp     ebx, 'Q'
@@ -29,6 +44,8 @@ on_key:
     je      .save
     cmp     ebx, VK_F9              ; loading works even after the scenario ends
     je      .load
+    cmp     ebx, 'N'
+    je      .sound
     cmp     dword [game_over], GO_NONE
     je      .playing
     cmp     ebx, 'R'
@@ -63,6 +80,16 @@ on_key:
     je      .build
     cmp     ebx, '0'
     je      .key_handy
+    cmp     ebx, 'M'
+    je      .key_mech
+    cmp     ebx, VK_ADD
+    je      .price_up
+    cmp     ebx, VK_OEM_PLUS
+    je      .price_up
+    cmp     ebx, VK_SUBTRACT
+    je      .price_down
+    cmp     ebx, VK_OEM_MINUS
+    je      .price_down
     cmp     ebx, 'X'
     je      .key_demolish
     cmp     ebx, '1'
@@ -75,8 +102,22 @@ on_key:
 .key_handy:
     mov     dword [tool], TOOL_HANDY_IDX
     jmp     .done
+.key_mech:
+    mov     dword [tool], TOOL_MECH_IDX
+    jmp     .done
 .key_demolish:
     mov     dword [tool], TOOL_DEMOLISH
+    jmp     .done
+.price_up:
+    mov     ecx, 1
+    call    change_price
+    jmp     .done
+.price_down:
+    mov     ecx, -1
+    call    change_price
+    jmp     .done
+.sound:
+    call    toggle_sound
     jmp     .done
 
 .up:
@@ -166,6 +207,9 @@ on_mouse_down:
     mov     ebx, ecx
     mov     esi, edx
     mov     edi, r8d
+    call    options_click           ; the options button and screen come first
+    test    eax, eax
+    jnz     .done
     cmp     esi, PANEL_Y
     jl      .map
     test    edi, edi
@@ -209,4 +253,22 @@ on_mouse_down:
     pop     rdi
     pop     rsi
     pop     rbx
+    ret
+
+; void on_wheel(int delta /*ecx*/) - the scroll wheel changes the price of the ride under the cursor
+on_wheel:
+    sub     rsp, 40
+    cmp     dword [game_over], GO_NONE
+    jne     .done
+    cmp     dword [options_open], 0
+    jne     .done
+    mov     eax, ecx
+    mov     ecx, 1
+    test    eax, eax
+    jg      .change
+    mov     ecx, -1
+.change:
+    call    change_price
+.done:
+    add     rsp, 40
     ret

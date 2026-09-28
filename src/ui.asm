@@ -3,16 +3,16 @@
 
 %include "defs.inc"
 
-global font_big, font_norm, font_small, font_title, make_font, render
-extern cash, coaster_n, coaster_of, coasters, CreateFontA, cur_x, cur_y, day, diamond, drag
-extern draw_person, draw_world, fill_rect, game_over, GdiFlush, guest_count, handy_n, hdc_mem
-extern height, line, map, msg_buf, n_water, paused, pen, rating, SelectObject, SetTextColor, sprintf
-extern TextOutA, tile_name, tile_ticket, tile_upkeep, tool, vspan
+global draw_text, font_big, font_norm, font_small, font_title, make_font, render, use_font
+extern broken, cash, coaster_n, coaster_of, coasters, CreateFontA, cur_x, cur_y, day, diamond, drag
+extern draw_options, draw_person, draw_world, fill_rect, game_over, GdiFlush, guest_count, handy_n
+extern hdc_mem, height, line, map, mech_n, msg_buf, n_water, paused, pen, price, rating, ride_value
+extern SelectObject, SetTextColor, sound_on, sprintf, TextOutA, tile_name, tile_upkeep, tool, vspan
 
 section .rdata
-tool_name   dq tn_path, tn_station, tn_track, tn_ferris, tn_carousel, tn_food, tn_tree, tn_raise, tn_lower, tn_handy, tn_demolish
-tool_price  dq tp_path, tp_station, tp_track, tp_ferris, tp_carousel, tp_food, tp_tree, tp_land, tp_land, tp_handy, tp_demolish
-tool_icon   dd 0xA8A29A, 0xC62828, 0x7F1010, 0x42A5F5, 0xFFB300, 0x8D6E63, 0x2E7D32, 0x8D6E63, 0x8D6E63, 0, 0
+tool_name   dq tn_path, tn_station, tn_track, tn_ferris, tn_carousel, tn_food, tn_tree, tn_raise, tn_lower, tn_handy, tn_mech, tn_demolish
+tool_price  dq tp_path, tp_station, tp_track, tp_ferris, tp_carousel, tp_food, tp_tree, tp_land, tp_land, tp_handy, tp_mech, tp_demolish
+tool_icon   dd 0xA8A29A, 0xC62828, 0x7F1010, 0x42A5F5, 0xFFB300, 0x8D6E63, 0x2E7D32, 0x8D6E63, 0x8D6E63, 0, 0, 0
 go_title    dq 0, go_win, go_lose, go_bankrupt
 go_sub      dq 0, go_win_sub, go_lose_sub, go_bankrupt_sub
 go_colour   dd 0, 0x2E7D32, 0xB71C1C, 0xB71C1C
@@ -27,6 +27,7 @@ tn_tree     db "Tree", 0
 tn_raise    db "Raise", 0
 tn_lower    db "Lower", 0
 tn_handy    db "Handyman", 0
+tn_mech     db "Mechanic", 0
 tn_demolish db "Demolish", 0
 tp_path     db "$10", 0
 tp_station  db "$200", 0
@@ -37,6 +38,7 @@ tp_food     db "$80", 0
 tp_tree     db "$15", 0
 tp_land     db "$20", 0
 tp_handy    db "$100", 0
+tp_mech     db "$150", 0
 tp_demolish db "right-click", 0
 go_win      db "SCENARIO COMPLETE!", 0
 go_lose     db "SCENARIO FAILED", 0
@@ -48,11 +50,13 @@ s_title     db "RollerCoaster Tycoon .asm", 0
 s_paused    db "PAUSED", 0
 f_header    db "Day %d of %d     Cash $%d     Guests %d / %d     Staff %d     Rating %d%%     Coasters %d", 0
 f_cursor    db "Tile (%d,%d), height %d: %s", 0
-f_rideinfo  db "  -  ticket $%d, upkeep $%d/day", 0
-f_coaster   db "  -  %d track, %d turns, %d drops, %d over water, excitement %d, ticket $%d", 0
+f_rideinfo  db "  -  price $%d (worth about $%d), upkeep $%d/day%s", 0
+f_coaster   db "  -  %d track, %d turns, %d drops, %d over water, excitement %d  -  price $%d (worth about $%d)%s", 0
+s_price_hint db "      scroll or +/- to change the price", 0
+s_broken    db "      BROKEN DOWN - send a mechanic", 0
 s_no_loop   db "  -  not open: the track must loop back into the station", 0
 s_loose     db "  -  not part of a finished circuit", 0
-f_help      db "Left-click/drag: build    Right-click/drag: demolish    1-9, 0, X: tools    Arrows + Space: keyboard build    B: drag-build [%s]    P: pause    F5: save    F9: load    Esc: quit", 0
+f_help      db "Click/drag: build    Right-click: demolish    1-9, 0, M, X: tools    Scroll or +/-: ride price    B: drag-build [%s]    P: pause    N: sound [%s]    O: options    F5 / F9: save / load    Esc: quit", 0
 s_on        db "on", 0
 s_off       db "off", 0
 
@@ -110,6 +114,16 @@ draw_text:
     pop     rdi
     pop     rsi
     pop     rbx
+    ret
+
+; const char* ride_suffix(int idx /*ecx*/) -> the broken-down warning or the price hint. Leaf.
+ride_suffix:
+    lea     rax, [broken]
+    cmp     byte [rax + rcx], 0
+    lea     rax, [s_price_hint]
+    je      .done
+    lea     rax, [s_broken]
+.done:
     ret
 
 ; void use_font(HFONT f /*rcx*/)
@@ -182,6 +196,8 @@ draw_ui:
     call    fill_rect
     cmp     r12d, TOOL_HANDY_IDX
     je      .icon_handy
+    cmp     r12d, TOOL_MECH_IDX
+    je      .icon_mech
     cmp     r12d, TOOL_DEMOLISH
     je      .icon_demolish
     lea     rax, [tool_icon]
@@ -220,9 +236,13 @@ draw_ui:
     call    line
     jmp     .next_button
 .icon_handy:
+    mov     r8d, HANDY_SHIRT
+    jmp     .icon_person
+.icon_mech:
+    mov     r8d, MECH_SHIRT
+.icon_person:
     lea     ecx, [rbx + 16]
     mov     edx, BTN_Y + 34
-    mov     r8d, HANDY_SHIRT
     call    draw_person
     jmp     .next_button
 .icon_demolish:
@@ -288,6 +308,7 @@ draw_ui:
     mov     [rsp + 40], rax
     mov     qword [rsp + 48], GOAL_GUESTS
     mov     eax, [handy_n]
+    add     eax, [mech_n]
     mov     [rsp + 56], rax
     mov     eax, [rating]
     mov     [rsp + 64], rax
@@ -303,7 +324,7 @@ draw_ui:
     je      .labels
     mov     rcx, [font_title]
     call    use_font
-    mov     ecx, SCR_W - 80
+    mov     ecx, SCR_W - 190        ; left of the options button
     mov     edx, 8
     lea     r8, [s_paused]
     mov     r9d, TXT_RED
@@ -367,12 +388,19 @@ draw_ui:
     jb      .info_done
     cmp     r14d, T_FOOD
     ja      .info_done
+    lea     rax, [tile_upkeep]
+    mov     eax, [rax + r14*4]
+    mov     [rsp + 32], rax
+    mov     ecx, ebx
+    call    ride_suffix
+    mov     [rsp + 40], rax
+    mov     ecx, ebx
+    call    ride_value
+    mov     r9d, eax
+    lea     rax, [price]
+    movzx   r8d, byte [rax + rbx]
     mov     rcx, r15
     lea     rdx, [f_rideinfo]
-    lea     rax, [tile_ticket]
-    mov     r8d, [rax + r14*4]
-    lea     rax, [tile_upkeep]
-    mov     r9d, [rax + r14*4]
     call    sprintf
     jmp     .info_done
 .coaster_info:
@@ -393,10 +421,6 @@ draw_ui:
     imul    eax, eax, CO_SIZE
     lea     rbx, [coasters]
     add     rbx, rax
-    mov     rcx, r15
-    lea     rdx, [f_coaster]
-    mov     r8d, [rbx + CO_LEN]
-    mov     r9d, [rbx + CO_TURNS]
     mov     eax, [rbx + CO_DROPS]
     mov     [rsp + 32], rax
     mov     eax, [rbx + CO_SPLASH]
@@ -404,7 +428,17 @@ draw_ui:
     mov     eax, [rbx + CO_EXCITE]
     mov     [rsp + 48], rax
     mov     eax, [rbx + CO_TICKET]
+    mov     [rsp + 64], rax
+    mov     ecx, [rbx + CO_STATION] ; the price and any breakdown belong to the station
+    lea     rax, [price]
+    movzx   eax, byte [rax + rcx]
     mov     [rsp + 56], rax
+    call    ride_suffix
+    mov     [rsp + 72], rax
+    mov     rcx, r15
+    lea     rdx, [f_coaster]
+    mov     r8d, [rbx + CO_LEN]
+    mov     r9d, [rbx + CO_TURNS]
     call    sprintf
 .info_done:
     mov     ecx, 12
@@ -428,6 +462,11 @@ draw_ui:
     je      .help
     lea     r8, [s_on]
 .help:
+    lea     r9, [s_off]
+    cmp     dword [sound_on], 0
+    je      .help_sound
+    lea     r9, [s_on]
+.help_sound:
     call    sprintf
     mov     ecx, 12
     mov     edx, LINE3_Y
@@ -480,6 +519,7 @@ render:
     call    fill_rect
     call    draw_world
     call    draw_ui
+    call    draw_options
     add     rsp, 40
     ret
 

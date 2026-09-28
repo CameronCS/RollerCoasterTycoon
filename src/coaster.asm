@@ -3,7 +3,7 @@
 
 %include "defs.inc"
 
-global analyze_coasters, circ, coaster_n, coaster_of, coasters
+global analyze_coasters, circ, coaster_n, coaster_of, coasters, neighbor
 extern dir_dx, dir_dy, height, map
 
 section .bss

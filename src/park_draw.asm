@@ -4,9 +4,9 @@
 %include "defs.inc"
 
 global anim, draw_person, draw_world, frac, pick_tile
-extern box, circ, circle, coaster_n, coasters, cur_x, cur_y, diamond, dir_dx, dir_dy, fill_rect
-extern guests, handymen, height, hspan, line, map, pen, pen_left, pen_right, pen_top, plot, rail_at
-extern ring, tool, tool_tile, vspan
+extern box, broken, circ, circle, coaster_n, coasters, cur_x, cur_y, diamond, dir_dx, dir_dy
+extern fill_rect, grid, guests, handymen, height, hspan, line, map, pen, pen_left, pen_right
+extern pen_top, plot, rail_at, ring, tool, tool_tile, vspan
 
 section .rdata
 rail_vx     db 10, 10, -10, -10         ; screen offset from a tile's centre to its edge, per direction
@@ -206,6 +206,10 @@ draw_ground:
     mov     dword [pen_right], 0x6E6862
 
 .column:                            ; the whole column of land, down to the map's base
+    cmp     dword [grid], 0
+    jne     .grid_lines
+    mov     edi, r14d               ; no grid: the lid is all surface colour
+.grid_lines:
     mov     [pen_top], edi          ; lid in the grid-line colour...
     mov     ecx, ebx
     lea     edx, [rsi + DIRT_H]
@@ -648,7 +652,51 @@ draw_object:
     mov     r9d, 1
     call    fill_rect
 
-.done:
+.done:                              ; broken down: smoke and a flashing warning sign
+    imul    eax, r13d, MAP_W
+    add     eax, r12d
+    lea     rcx, [broken]
+    cmp     byte [rcx + rax], 0
+    je      .finished
+    mov     r15d, [anim]
+    shr     r15d, 1
+    and     r15d, 15
+    PEN     0x9E9E9E
+    lea     ecx, [rbx + 6]
+    lea     edx, [rsi - 26]
+    sub     edx, r15d
+    mov     r8d, 3
+    call    circle
+    PEN     0x757575
+    lea     ecx, [rbx + 9]
+    lea     edx, [rsi - 34]
+    sub     edx, r15d
+    mov     r8d, 2
+    call    circle
+    test    dword [anim], 8
+    jz      .finished
+    PEN     0xFFFFFF
+    mov     ecx, ebx
+    lea     edx, [rsi - 46]
+    mov     r8d, 8
+    call    circle
+    PEN     0xE53935
+    mov     ecx, ebx
+    lea     edx, [rsi - 46]
+    mov     r8d, 7
+    call    circle
+    PEN     0xFFFFFF                ; "!"
+    lea     ecx, [rbx - 1]
+    lea     edx, [rsi - 50]
+    mov     r8d, 3
+    mov     r9d, 6
+    call    fill_rect
+    lea     ecx, [rbx - 1]
+    lea     edx, [rsi - 42]
+    mov     r8d, 3
+    mov     r9d, 2
+    call    fill_rect
+.finished:
     add     rsp, 48
     pop     r15
     pop     r14
@@ -863,7 +911,9 @@ draw_walkers:
     call    walker_pos
     mov     r12d, eax
     mov     r13d, edx
-    PEN     0xA1887F
+    cmp     byte [rbx + H_TYPE], STAFF_MECH
+    je      .mechanic
+    PEN     0xA1887F                ; handyman's broom
     lea     ecx, [r12d + 3]
     lea     edx, [r13d - 8]
     lea     r8d, [r12d + 6]
@@ -874,9 +924,23 @@ draw_walkers:
     lea     edx, [r12d + 9]
     mov     r8d, r13d
     call    hspan
+    mov     r8d, HANDY_SHIRT
+    jmp     .staff_body
+.mechanic:                          ; mechanic's wrench
+    PEN     0xB0BEC5
+    lea     ecx, [r12d + 3]
+    lea     edx, [r13d - 6]
+    lea     r8d, [r12d + 7]
+    lea     r9d, [r13d - 2]
+    call    line
+    lea     ecx, [r12d + 7]
+    lea     edx, [r13d - 3]
+    mov     r8d, 2
+    call    circle
+    mov     r8d, MECH_SHIRT
+.staff_body:
     mov     ecx, r12d
     mov     edx, r13d
-    mov     r8d, HANDY_SHIRT
     call    draw_person
 .next_handy:
     add     rbx, HANDY_SIZE

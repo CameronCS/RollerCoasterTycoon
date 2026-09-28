@@ -9,7 +9,7 @@ bits 64
 default rel
 
 ; ---- window / screen ------------------------------------------------------
-SCR_W             equ 1040
+SCR_W             equ 1120
 SCR_H             equ 720
 WIN_STYLE         equ 0x10CA0000        ; WS_VISIBLE|WS_CAPTION|WS_SYSMENU|WS_MINIMIZEBOX
 CW_USEDEFAULT     equ 0x80000000
@@ -26,13 +26,14 @@ WM_LBUTTONDOWN    equ 0x0201
 WM_LBUTTONUP      equ 0x0202
 WM_RBUTTONDOWN    equ 0x0204
 WM_RBUTTONUP      equ 0x0205
+WM_MOUSEWHEEL     equ 0x020A
 MK_LBUTTON        equ 1
 MK_RBUTTON        equ 2
 
 ; ---- isometric layout -----------------------------------------------------
 ; Tile (x,y) at height 0 has its top corner at (OX + (x-y)*20, OY + (x+y)*10);
 ; tiles are 40x20 and each height level lifts a tile HSTEP pixels.
-OX                equ 380
+OX                equ 420
 OY                equ 110
 HALF_W            equ 20
 HSTEP             equ 8
@@ -43,16 +44,16 @@ RAIL_H            equ 12                ; coaster track height above the ground
 
 HEADER_H          equ 34
 PANEL_Y           equ 590
-BTN_X0            equ 6
+BTN_X0            equ 8
 BTN_Y             equ PANEL_Y + 8
-BTN_W             equ 90
+BTN_W             equ 88
 BTN_H             equ 44
-BTN_STEP          equ 94
+BTN_STEP          equ 92
 BTN_TEXT          equ 32                ; label offset inside a button
 LINE1_Y           equ PANEL_Y + 58
 LINE2_Y           equ PANEL_Y + 78
 LINE3_Y           equ PANEL_Y + 98
-BANNER_X          equ 220
+BANNER_X          equ 260
 BANNER_Y          equ 270
 
 ; ---- colours (DIB pixels are 0xRRGGBB; GDI text colours are 0xBBGGRR) ------
@@ -68,6 +69,7 @@ TXT_DIM           equ 0x8A8078
 TXT_CYAN          equ 0xEADE80
 TXT_RED           equ 0x5252FF
 HANDY_SHIRT       equ 0x43A047
+MECH_SHIRT        equ 0x1E63C8
 SKIN              equ 0xF1C27D
 
 ; ---- map / simulation ------------------------------------------------------
@@ -97,6 +99,13 @@ MAX_HANDY         equ 16
 HANDY_COST        equ 100
 HANDY_WAGE        equ 10
 SWEEP_TICKS       equ 4
+MECH_COST         equ 150
+MECH_WAGE         equ 15
+FIX_TICKS         equ 25                ; how long a repair takes
+BREAK_ODDS        equ 900               ; a flat ride breaks down about once per this many ticks
+COASTER_BREAK_ODDS equ 500
+MAX_PRICE         equ 40
+NO_TARGET         equ 0xFFFF
 
 ; Tile types - index into every tile_* table
 T_GRASS           equ 0
@@ -110,14 +119,16 @@ T_TREE            equ 7
 T_PUKE            equ 8
 T_TRACK           equ 9
 
-TOOL_COUNT        equ 11
+TOOL_COUNT        equ 12
 TOOL_HANDY        equ 0xFE              ; tool_tile markers for tools that don't place a tile
 TOOL_RAISE        equ 0xFD
 TOOL_LOWER        equ 0xFC
+TOOL_MECH         equ 0xFB
 TOOL_RAISE_IDX    equ 7                 ; tool indices
 TOOL_LOWER_IDX    equ 8
 TOOL_HANDY_IDX    equ 9
-TOOL_DEMOLISH     equ 10
+TOOL_MECH_IDX     equ 10
+TOOL_DEMOLISH     equ 11
 TERRAFORM_COST    equ 20
 START_HILLS       equ 3
 START_LAKES       equ 2
@@ -159,10 +170,27 @@ H_ACTIVE          equ 0
 H_X               equ 1
 H_Y               equ 2
 H_DIR             equ 3
-H_BUSY            equ 4                 ; ticks left sweeping
+H_BUSY            equ 4                 ; ticks left sweeping or repairing
 H_PX              equ 5
 H_PY              equ 6
-HANDY_SIZE        equ 8
+H_TYPE            equ 7                 ; STAFF_HANDY or STAFF_MECH
+H_TARGET          equ 8                 ; word, map index of the ride being repaired
+HANDY_SIZE        equ 16
+
+STAFF_HANDY       equ 0
+STAFF_MECH        equ 1
+
+; Sounds - index into the sound table in sound.asm
+SND_BUILD         equ 0
+SND_CASH          equ 1
+SND_SCREAM        equ 2
+SND_SPLAT         equ 3
+SND_BREAK         equ 4
+SND_FIXED         equ 5
+SND_FANFARE       equ 6
+SND_COUNT         equ 7
+SND_AMBIENT       equ 0                 ; play_sound modes: skip if another sound is playing...
+SND_NOW           equ 1                 ; ...or cut it off
 
 ; GameOver
 GO_NONE           equ 0

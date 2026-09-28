@@ -1,12 +1,13 @@
-; sim.asm - the simulation tick: guests (moods, rides, vomit, wandering), handymen,
-; admissions, and the end-of-day accounts and scenario check.
+; sim.asm - the simulation tick: guests (moods, prices, rides, vomit, wandering),
+; admissions, and the end-of-day accounts and scenario check. Staff live in staff.asm.
 
 %include "defs.inc"
 
-global sim_tick
-extern cash, coaster_n, coaster_of, coasters, compute_stats, day, dir_dx, dir_dy, game_over
-extern guest_count, guests, handy_n, handymen, height, map, next_id, post_msg, rand_n, rating
-extern ride_count, swept, tick, tile_at, tile_joy, tile_nausea, tile_ticket, tile_upkeep, visitors
+global dir_walkable, pick_dir, sim_tick
+extern broken, cash, coaster_n, coaster_of, coasters, compute_stats, day, dir_dx, dir_dy, game_over
+extern guest_count, guests, handy_n, handymen, height, map, mech_n, next_id, plan_repairs
+extern play_sound, post_msg, price, rand_n, rating, ride_breakdowns, ride_count, ride_value, tick
+extern tile_at, tile_joy, tile_nausea, tile_upkeep, update_staff, visitors
 
 section .rdata
 tile_thought dq 0, 0, 0, 0, th_ferris, th_carousel, th_food, 0, 0, 0
@@ -16,6 +17,8 @@ th_ferris   db `Guest %d: "What a lovely view from the Ferris wheel."`, 0
 th_carousel db `Guest %d: "The carousel was really fun!"`, 0
 th_food     db `Guest %d: "This burger is great value."`, 0
 m_hungry    db `Guest %d: "I'm hungry."`, 0
+m_ride_broken db `Guest %d: "Aww, it's broken down!"`, 0
+m_too_dear  db `Guest %d: "I'm not paying $%d for that!"`, 0
 m_puke      db `Guest %d was sick on the path! Yuck. (Hire a handyman to keep things clean)`, 0
 m_leave_sad db `Guest %d: "I want to go home." (left the park)`, 0
 m_leave_broke db `Guest %d: "I've spent all my money!" (left the park)`, 0
@@ -245,6 +248,9 @@ update_guest:
     lea     rcx, [m_puke]
     mov     edx, [rbx + G_ID]
     call    post_msg
+    mov     ecx, SND_SPLAT
+    mov     edx, SND_AMBIENT
+    call    play_sound
 
 .leave_check:
     cmp     byte [rbx + G_HAPPY], 15
@@ -310,14 +316,61 @@ update_guest:
     jnz     .next_look
 
 .board:
+    lea     rax, [broken]
+    cmp     byte [rax + r14], 0
+    je      .working
+    mov     ecx, 2                  ; wanted to ride, but it's broken
+    call    sub_happy
+    mov     ecx, 8
+    call    rand_n
+    test    eax, eax
+    jnz     .next_look
+    lea     rcx, [m_ride_broken]
+    mov     edx, [rbx + G_ID]
+    call    post_msg
+    jmp     .next_look
+.working:
+    cmp     edi, T_STATION          ; too queasy for another coaster?
+    jne     .judge_price
+    cmp     byte [rbx + G_NAUSEA], QUEASY_LIMIT
+    ja      .next_look
+.judge_price:
+    mov     ecx, r14d
+    call    ride_value              ; 0 for a coaster that isn't finished
+    test    eax, eax
+    jz      .next_look
+    lea     rcx, [price]
+    movzx   r15d, byte [rcx + r14]
+    mov     ecx, r15d
+    sub     ecx, eax                ; how far over its value
+    jle     .fair
+    cmp     ecx, eax
+    jae     .too_dear               ; over double: nobody pays that
+    mov     r8d, ecx
+    mov     ecx, eax
+    call    rand_n                  ; otherwise refuse with chance excess / value
+    cmp     eax, r8d
+    jae     .fair
+.too_dear:
+    mov     ecx, 1
+    call    sub_happy
+    mov     ecx, 6
+    call    rand_n
+    test    eax, eax
+    jnz     .next_look
+    lea     rcx, [m_too_dear]
+    mov     edx, [rbx + G_ID]
+    mov     r8d, r15d
+    call    post_msg
+    jmp     .next_look
+
+.fair:
+    cmp     [rbx + G_CASH], r15d
+    jl      .next_look
+    sub     [rbx + G_CASH], r15d
+    add     [cash], r15d
     cmp     edi, T_STATION
     je      .coaster
-    lea     rax, [tile_ticket]
-    mov     ecx, [rax + rdi*4]
-    cmp     [rbx + G_CASH], ecx
-    jl      .next_look
-    sub     [rbx + G_CASH], ecx
-    add     [cash], ecx
     lea     rax, [tile_joy]
     mov     ecx, [rax + rdi*4]
     call    add_happy
@@ -332,19 +385,10 @@ update_guest:
 .coaster:
     lea     rax, [coaster_of]
     movzx   eax, byte [rax + r14]
-    test    eax, eax
-    jz      .next_look              ; circuit not finished
     dec     eax
     imul    eax, eax, CO_SIZE
     lea     r15, [coasters]
     add     r15, rax
-    cmp     byte [rbx + G_NAUSEA], QUEASY_LIMIT
-    ja      .next_look
-    mov     ecx, [r15 + CO_TICKET]
-    cmp     [rbx + G_CASH], ecx
-    jl      .next_look
-    sub     [rbx + G_CASH], ecx
-    add     [cash], ecx
     movzx   ecx, byte [r15 + CO_JOY]
     call    add_happy
     movzx   ecx, byte [r15 + CO_NAUSEA]
@@ -356,9 +400,15 @@ update_guest:
     mov     eax, 250
 .lap:
     mov     [rbx + G_COOL], al
-    cmp     [r15 + CO_RUN], eax
+    mov     ecx, [r15 + CO_RUN]
+    cmp     ecx, eax
     jae     .train_running
     mov     [r15 + CO_RUN], eax
+    test    ecx, ecx                ; the train sets off: screams
+    jnz     .train_running
+    mov     ecx, SND_SCREAM
+    mov     edx, SND_AMBIENT
+    call    play_sound
 .train_running:
     cmp     dword [r15 + CO_EXCITE], TAME_EXCITEMENT
     lea     r15, [th_coaster]
@@ -427,80 +477,6 @@ update_guest:
     pop     r13
     pop     r12
     pop     rdi
-    pop     rsi
-    pop     rbx
-    ret
-
-; ---------------------------------------------------------------------------
-; void update_handy(Handyman* h /*rcx*/) - sweep vomit underfoot, head for any
-; next door, otherwise patrol the paths.
-; ---------------------------------------------------------------------------
-update_handy:
-    push    rbx
-    push    rsi
-    push    r12
-    push    r13
-    sub     rsp, 40
-    mov     rbx, rcx
-    movzx   r12d, byte [rbx + H_X]
-    movzx   r13d, byte [rbx + H_Y]
-    mov     [rbx + H_PX], r12b
-    mov     [rbx + H_PY], r13b
-
-    cmp     byte [rbx + H_BUSY], 0
-    je      .look
-    dec     byte [rbx + H_BUSY]
-    jmp     .done
-
-.look:
-    mov     ecx, r12d
-    mov     edx, r13d
-    call    tile_at
-    cmp     eax, T_PUKE
-    jne     .seek
-    imul    eax, r13d, MAP_W
-    add     eax, r12d
-    lea     rcx, [map]
-    mov     byte [rcx + rax], T_PATH
-    mov     byte [rbx + H_BUSY], SWEEP_TICKS
-    inc     dword [swept]
-    jmp     .done
-
-.seek:
-    xor     esi, esi
-.seek_dir:
-    lea     rax, [dir_dx]
-    movsx   ecx, byte [rax + rsi]
-    add     ecx, r12d
-    lea     rax, [dir_dy]
-    movsx   edx, byte [rax + rsi]
-    add     edx, r13d
-    call    tile_at
-    cmp     eax, T_PUKE
-    je      .step
-    inc     esi
-    cmp     esi, 4
-    jb      .seek_dir
-
-    movzx   ecx, byte [rbx + H_DIR]
-    call    pick_dir
-    cmp     eax, -1
-    je      .done                   ; stuck: wait to be fired
-    mov     esi, eax
-.step:
-    mov     [rbx + H_DIR], sil
-    lea     rax, [dir_dx]
-    movsx   ecx, byte [rax + rsi]
-    add     r12d, ecx
-    lea     rax, [dir_dy]
-    movsx   ecx, byte [rax + rsi]
-    add     r13d, ecx
-    mov     [rbx + H_X], r12b
-    mov     [rbx + H_Y], r13b
-.done:
-    add     rsp, 40
-    pop     r13
-    pop     r12
     pop     rsi
     pop     rbx
     ret
@@ -588,6 +564,8 @@ new_day:
 
     inc     dword [day]
     imul    ebx, dword [handy_n], HANDY_WAGE
+    imul    eax, dword [mech_n], MECH_WAGE
+    add     ebx, eax
     xor     esi, esi
     lea     r8, [map]
     lea     r9, [tile_upkeep]
@@ -602,22 +580,31 @@ new_day:
     cmp     dword [cash], BANKRUPT_LIMIT
     jge     .solvent
     mov     dword [game_over], GO_BANKRUPT
-    jmp     .done
+    jmp     .lost
 .solvent:
     cmp     dword [day], GOAL_DAY
     jle     .announce
     cmp     dword [guest_count], GOAL_GUESTS
     jl      .lose
     mov     dword [game_over], GO_WIN
-    jmp     .done
+    mov     ecx, SND_FANFARE
+    jmp     .sound
 .lose:
     mov     dword [game_over], GO_LOSE
+.lost:
+    mov     ecx, SND_BREAK
+.sound:
+    mov     edx, SND_NOW
+    call    play_sound
     jmp     .done
 .announce:
     lea     rcx, [m_newday]
     mov     edx, [day]
     mov     r8d, ebx
     call    post_msg
+    mov     ecx, SND_CASH           ; the day's takings
+    mov     edx, SND_AMBIENT
+    call    play_sound
 .done:
     add     rsp, 40
     pop     rsi
@@ -642,6 +629,7 @@ sim_tick:
 
 .spawn:
     call    try_spawn
+    call    ride_breakdowns
     lea     rbx, [guests]
     xor     esi, esi
 .guest:
@@ -655,13 +643,14 @@ sim_tick:
     cmp     esi, MAX_GUESTS
     jb      .guest
 
+    call    plan_repairs            ; where mechanics should head
     lea     rbx, [handymen]
     xor     esi, esi
 .handy:
     cmp     byte [rbx + H_ACTIVE], 0
     je      .next_handy
     mov     rcx, rbx
-    call    update_handy
+    call    update_staff
 .next_handy:
     add     rbx, HANDY_SIZE
     inc     esi
@@ -675,6 +664,10 @@ sim_tick:
     cmp     ecx, [coaster_n]
     jae     .trains_done
     mov     dword [rax + CO_MOVED], 0
+    mov     edx, [rax + CO_STATION] ; a broken coaster's train stays put
+    lea     r8, [broken]
+    cmp     byte [r8 + rdx], 0
+    jne     .next_train
     cmp     dword [rax + CO_RUN], 0
     je      .coast
     dec     dword [rax + CO_RUN]
@@ -703,6 +696,3 @@ sim_tick:
     pop     rbx
     ret
 
-; ===========================================================================
-; Rasteriser - everything draws with the colour in [pen] (boxes use pen_top,
-; pen_left and pen_right) and clips to the screen.

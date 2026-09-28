@@ -14,6 +14,10 @@
 ;   ui.asm        header, toolbar, text, frame composition
 ;   input.asm     keyboard and mouse
 ;   save.asm      saving and loading park.sav
+;   rides.asm     breakdowns, repairs and ticket prices
+;   staff.asm     handymen and mechanics
+;   sound.asm     synthesised sound effects
+;   options.asm   the options screen and options.cfg
 ;
 ; Controls: left-click/drag builds with the current tool, right-click/drag demolishes,
 ;           click a toolbar button or press 1-9, 0 or X to pick a tool. Keyboard also
@@ -44,10 +48,11 @@
 global hdc_mem, main, running
 extern AdjustWindowRect, anim, BeginPaint, BitBlt, CreateCompatibleDC, CreateDIBSection
 extern CreateWindowExA, DefWindowProcA, DispatchMessageA, EndPaint, font_big, font_norm, font_small
-extern font_title, frac, game_over, GetDC, GetModuleHandleA, GetTickCount, init_game, ldrag
-extern LoadCursorA, make_font, on_key, on_mouse_down, on_mouse_move, paused, PeekMessageA, pixels
-extern PostQuitMessage, rdrag, RegisterClassExA, ReleaseCapture, ReleaseDC, render, rng
-extern SelectObject, SetBkMode, SetCapture, sim_tick, Sleep, TranslateMessage
+extern font_title, frac, game_over, GetDC, GetModuleHandleA, GetTickCount, init_game, init_sound
+extern ldrag, load_options, LoadCursorA, make_font, on_key, on_mouse_down, on_mouse_move, on_wheel
+extern options_open, paused, PeekMessageA, pixels, PostQuitMessage, rdrag, RegisterClassExA
+extern ReleaseCapture, ReleaseDC, render, rng, SelectObject, SetBkMode, SetCapture, sim_tick, Sleep
+extern tick_ms, TranslateMessage
 
 section .rdata
 class_name  db "TycoonAsm", 0
@@ -132,6 +137,8 @@ wndproc:
     je      .up
     cmp     esi, WM_RBUTTONUP
     je      .up
+    cmp     esi, WM_MOUSEWHEEL
+    je      .wheel
     mov     rcx, rbx
     mov     edx, esi
     mov     r8, rdi
@@ -184,6 +191,12 @@ wndproc:
     movsx   edx, dx
     mov     r8d, [rsp + 32]
     call    on_mouse_down
+    jmp     .zero
+.wheel:
+    mov     rcx, rdi                ; the wheel delta is the high word of wParam
+    shr     rcx, 16
+    movsx   ecx, cx
+    call    on_wheel
     jmp     .zero
 .up:
     mov     dword [ldrag], 0
@@ -294,6 +307,8 @@ main:
     mov     [last_tick], eax
     or      eax, 1                  ; xorshift state must be nonzero
     mov     [rng], eax
+    call    load_options            ; before the sounds: they're made at the saved volume
+    call    init_sound
     call    init_game
 
 .loop:
@@ -327,10 +342,13 @@ main:
 .ticks:
     mov     eax, ebx
     sub     eax, [last_tick]
-    cmp     eax, TICK_MS
+    cmp     eax, [tick_ms]
     jb      .frame
-    add     dword [last_tick], TICK_MS
+    mov     ecx, [tick_ms]
+    add     [last_tick], ecx
     cmp     dword [paused], 0
+    jne     .ticks
+    cmp     dword [options_open], 0 ; the game waits while the options screen is up
     jne     .ticks
     cmp     dword [game_over], GO_NONE
     jne     .ticks
@@ -340,9 +358,10 @@ main:
 .frame:
     shl     eax, 8                  ; frac = time into this tick, 0-256
     xor     edx, edx
-    mov     ecx, TICK_MS
-    div     ecx
+    div     dword [tick_ms]
     cmp     dword [paused], 0
+    jne     .still
+    cmp     dword [options_open], 0
     jne     .still
     cmp     dword [game_over], GO_NONE
     je      .moving

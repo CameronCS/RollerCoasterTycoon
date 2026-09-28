@@ -4,10 +4,10 @@
 %include "defs.inc"
 
 global build, compute_stats, demolish_here, init_game
-extern analyze_coasters, cash, coaster_n, coaster_of, coasters, cur_x, cur_y, day, drag, game_over
-extern guest_count, guests, handy_n, handymen, height, map, n_handy, n_landscape, next_id, paused
-extern post_msg, rand_n, rating, ride_count, swept, tick, tile_cost, tile_name, tool, tool_tile
-extern visitors
+extern analyze_coasters, broken, cash, coaster_n, coaster_of, coasters, cur_x, cur_y, day, drag
+extern game_over, guest_count, guests, handy_n, handymen, height, map, mech_n, n_handy, n_landscape
+extern n_mech, next_id, paused, play_sound, post_msg, price, rand_n, rating, ride_count, swept, tick
+extern tile_cost, tile_name, tile_ticket, tool, tool_tile, visitors
 
 section .rdata
 m_welcome   db `Welcome to your new park! Build attractions beside the path. Goal: %d guests by end of day %d.`, 0
@@ -19,8 +19,10 @@ m_broke     db `Not enough cash! %s costs $%d.`, 0
 m_built     db `Built %s for $%d.`, 0
 m_coaster_open db `Coaster complete! Excitement %d, ticket price $%d. Let the screaming begin.`, 0
 m_hired     db `Hired a handyman for $%d. Wages are $%d a day.`, 0
+m_hired_mech db `Hired a mechanic for $%d. Wages are $%d a day.`, 0
 m_fired     db `Fired a handyman.`, 0
-m_hire_where db `Handymen have to be placed on a path.`, 0
+m_fired_mech db `Fired a mechanic.`, 0
+m_hire_where db `Staff have to be placed on a path.`, 0
 m_staff_full db `You can't hire any more staff.`, 0
 m_tf_clear  db `Only bare land and paths can be raised or lowered.`, 0
 m_tf_top    db `The land can't go any higher.`, 0
@@ -40,9 +42,11 @@ init_game:
     sub     rsp, 40
 
     lea     rax, [map]
+    lea     rdx, [broken]
     xor     ecx, ecx
 .grass:
     mov     byte [rax + rcx], T_GRASS
+    mov     byte [rdx + rcx], 0
     inc     ecx
     cmp     ecx, MAP_SIZE
     jb      .grass
@@ -105,6 +109,7 @@ init_game:
     mov     dword [next_id], 0
     mov     dword [visitors], 0
     mov     dword [handy_n], 0
+    mov     dword [mech_n], 0
     mov     dword [swept], 0
     call    analyze_coasters
     call    compute_stats
@@ -316,6 +321,8 @@ build:
     movzx   edi, byte [rcx + rax]   ; tile to place
     cmp     edi, TOOL_HANDY
     je      .hire
+    cmp     edi, TOOL_MECH
+    je      .hire
     cmp     edi, TOOL_RAISE
     je      .terraform
     cmp     edi, TOOL_LOWER
@@ -328,10 +335,17 @@ build:
     test    rax, rax
     jz      .demolish_tile
     mov     byte [rax + H_ACTIVE], 0
-    dec     dword [handy_n]
     lea     rcx, [m_fired]
+    cmp     byte [rax + H_TYPE], STAFF_MECH
+    je      .fire_mechanic
+    dec     dword [handy_n]
+    jmp     .fired
+.fire_mechanic:
+    dec     dword [mech_n]
+    lea     rcx, [m_fired_mech]
+.fired:
     call    post_msg
-    jmp     .done
+    jmp     .success
 
 .demolish_tile:
     cmp     esi, T_GRASS
@@ -343,7 +357,7 @@ build:
     mov     byte [rbx], T_PATH
     lea     rcx, [m_cleaned]
     call    post_msg
-    jmp     .done
+    jmp     .success
 
 .demolish:
     lea     rax, [tile_cost]
@@ -351,11 +365,16 @@ build:
     shr     r8d, 1                  ; half refund
     add     [cash], r8d
     mov     byte [rbx], T_GRASS
+    lea     rax, [map]              ; nothing left here to be broken
+    mov     rcx, rbx
+    sub     rcx, rax
+    lea     rax, [broken]
+    mov     byte [rax + rcx], 0
     lea     rax, [tile_name]
     mov     rdx, [rax + rsi*8]
     lea     rcx, [m_demolished]
     call    post_msg
-    jmp     .done
+    jmp     .success
 
 .nothing:
     lea     rcx, [m_nothing]
@@ -373,11 +392,16 @@ build:
     call    post_msg
     jmp     .done
 .hire_pay:
-    cmp     dword [cash], HANDY_COST
+    mov     r8d, HANDY_COST
+    lea     rdx, [n_handy]
+    cmp     edi, TOOL_MECH
+    jne     .hire_cost
+    mov     r8d, MECH_COST
+    lea     rdx, [n_mech]
+.hire_cost:
+    cmp     [cash], r8d
     jge     .hire_slot
     lea     rcx, [m_broke]
-    lea     rdx, [n_handy]
-    mov     r8d, HANDY_COST
     call    post_msg
     jmp     .done
 .hire_slot:
@@ -403,13 +427,26 @@ build:
     mov     [rax + H_PY], cl
     mov     byte [rax + H_DIR], 1
     mov     byte [rax + H_BUSY], 0
+    mov     word [rax + H_TARGET], NO_TARGET
+    cmp     edi, TOOL_MECH
+    je      .hired_mechanic
+    mov     byte [rax + H_TYPE], STAFF_HANDY
     inc     dword [handy_n]
     sub     dword [cash], HANDY_COST
     lea     rcx, [m_hired]
     mov     edx, HANDY_COST
     mov     r8d, HANDY_WAGE
     call    post_msg
-    jmp     .done
+    jmp     .success
+.hired_mechanic:
+    mov     byte [rax + H_TYPE], STAFF_MECH
+    inc     dword [mech_n]
+    sub     dword [cash], MECH_COST
+    lea     rcx, [m_hired_mech]
+    mov     edx, MECH_COST
+    mov     r8d, MECH_WAGE
+    call    post_msg
+    jmp     .success
 
 .place:
     cmp     esi, T_GRASS
@@ -440,9 +477,18 @@ build:
 .buy:
     sub     [cash], r8d
     mov     [rbx], dil
+    lea     rax, [map]              ; a new ride: working, at the standard price
+    mov     rcx, rbx
+    sub     rcx, rax
+    lea     rax, [broken]
+    mov     byte [rax + rcx], 0
+    lea     rax, [tile_ticket]
+    mov     eax, [rax + rdi*4]
+    lea     r9, [price]
+    mov     [r9 + rcx], al
     lea     rcx, [m_built]
     call    post_msg
-    jmp     .done
+    jmp     .success
 
 .terraform:                         ; bare land and paths only
     cmp     esi, T_GRASS
@@ -497,6 +543,10 @@ build:
     mov     [r13], dl
     sub     dword [cash], TERRAFORM_COST
     call    post_msg
+.success:
+    mov     ecx, SND_BUILD
+    mov     edx, SND_NOW
+    call    play_sound
 
 .done:
     call    analyze_coasters
@@ -515,10 +565,16 @@ build:
     imul    eax, eax, CO_SIZE
     lea     rcx, [coasters]
     add     rcx, rax
-    mov     edx, [rcx + CO_EXCITE]
+    mov     eax, [rcx + CO_STATION] ; open at what the ride is worth
     mov     r8d, [rcx + CO_TICKET]
+    lea     rdx, [price]
+    mov     [rdx + rax], r8b
+    mov     edx, [rcx + CO_EXCITE]
     lea     rcx, [m_coaster_open]
     call    post_msg
+    mov     ecx, SND_FANFARE
+    mov     edx, SND_NOW
+    call    play_sound
 .out:
     add     rsp, 32
     pop     r13

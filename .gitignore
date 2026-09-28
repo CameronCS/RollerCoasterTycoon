@@ -2,3 +2,4 @@ build/
 *.obj
 *.exe
 *.sav
+options.cfg

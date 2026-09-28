@@ -8,12 +8,12 @@
 %include "defs.inc"
 
 global load_game, save_game
-extern analyze_coasters, cash, compute_stats, cur_x, cur_y, day, fclose, fopen, fread, fwrite
-extern game_over, guests, handy_n, handymen, height, map, next_id, post_msg, rng, swept, tick
-extern tool, visitors
+extern analyze_coasters, broken, cash, compute_stats, cur_x, cur_y, day, fclose, fopen, fread
+extern fwrite, game_over, guests, handy_n, handymen, height, map, mech_n, next_id, post_msg, price
+extern rng, swept, tick, tool, visitors
 
 SAVE_MAGIC        equ 'RCTA'
-SAVE_VERSION      equ 1
+SAVE_VERSION      equ 2
 SAVE_HEADER       equ 12
 SAVE_BUF_SIZE     equ 8192              ; comfortably more than header + body
 
@@ -31,8 +31,8 @@ m_bad_save  db `park.sav is damaged or from a different version of the game.`, 0
 section .data
 ; everything that goes in the file, as (address, size) pairs
 save_blocks dq rng, 4, cash, 4, day, 4, tick, 4, cur_x, 4, cur_y, 4, tool, 4
-            dq game_over, 4, next_id, 4, visitors, 4, handy_n, 4, swept, 4
-            dq map, MAP_SIZE, height, MAP_SIZE
+            dq game_over, 4, next_id, 4, visitors, 4, handy_n, 4, mech_n, 4, swept, 4
+            dq map, MAP_SIZE, height, MAP_SIZE, broken, MAP_SIZE, price, MAP_SIZE
             dq handymen, MAX_HANDY * HANDY_SIZE, guests, MAX_GUESTS * GUEST_SIZE
 SAVE_BLOCKS equ ($ - save_blocks) / 16
 
