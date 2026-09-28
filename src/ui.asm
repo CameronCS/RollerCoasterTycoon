@@ -52,7 +52,7 @@ f_rideinfo  db "  -  ticket $%d, upkeep $%d/day", 0
 f_coaster   db "  -  %d track, %d turns, %d drops, %d over water, excitement %d, ticket $%d", 0
 s_no_loop   db "  -  not open: the track must loop back into the station", 0
 s_loose     db "  -  not part of a finished circuit", 0
-f_help      db "Left-click/drag: build     Right-click/drag: demolish     1-9, 0, X: tools     Arrows + Space: keyboard build     B: drag-build [%s]     P: pause     Esc: quit", 0
+f_help      db "Left-click/drag: build    Right-click/drag: demolish    1-9, 0, X: tools    Arrows + Space: keyboard build    B: drag-build [%s]    P: pause    F5: save    F9: load    Esc: quit", 0
 s_on        db "on", 0
 s_off       db "off", 0
 

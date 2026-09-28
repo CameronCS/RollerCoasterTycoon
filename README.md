@@ -14,6 +14,7 @@ A small theme-park sim in the spirit of *RollerCoaster Tycoon*, written the way 
 - **Landscaping:** raise and lower the land. Land lowered below sea level floods.
 - **Money:** admissions and ticket sales come in, and ride upkeep and staff wages go out every day.
 - **A scenario to beat:** have 50 guests in the park at the end of day 40 without going bankrupt.
+- **Save and load** your park with `F5` and `F9`.
 
 ## Controls
 
@@ -25,6 +26,7 @@ A small theme-park sim in the spirit of *RollerCoaster Tycoon*, written the way 
 | Arrows / `WASD`, `Space` | Move the cursor and build from the keyboard |
 | `B` | Toggle drag-build for keyboard building |
 | `P` | Pause |
+| `F5` / `F9` | Save the park to `park.sav` / load it back |
 | `R` | Restart after the scenario ends |
 | `Esc` / `Q` | Quit |
 
@@ -77,6 +79,7 @@ This assembles every module in `src\` into `build\` and links `tycoon.exe`. The 
 | `src/park_draw.asm` | Drawing the park back to front, and mouse picking |
 | `src/ui.asm` | Header, toolbar, info lines, text, composing each frame |
 | `src/input.asm` | Keyboard and mouse |
+| `src/save.asm` | Saving and loading `park.sav` |
 | `src/main.asm` | Window, message loop, startup |
 
 The whole game is hand-written assembly, following the Windows x64 calling convention. It links against the C runtime for `sprintf`, which formats text, and uses the Win32 API for the window and GDI.

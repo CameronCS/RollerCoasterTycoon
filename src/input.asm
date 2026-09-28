@@ -3,8 +3,11 @@
 %include "defs.inc"
 
 global ldrag, on_key, on_mouse_down, on_mouse_move, rdrag
-extern build, cur_x, cur_y, demolish_here, drag, game_over, init_game, paused, pick_tile, running
-extern tool
+extern build, cur_x, cur_y, demolish_here, drag, game_over, init_game, load_game, paused, pick_tile
+extern running, save_game, tool
+
+VK_F5             equ 0x74
+VK_F9             equ 0x78
 
 section .bss
 alignb 16
@@ -22,6 +25,10 @@ on_key:
     je      .quit
     cmp     ebx, 'Q'
     je      .quit
+    cmp     ebx, VK_F5
+    je      .save
+    cmp     ebx, VK_F9              ; loading works even after the scenario ends
+    je      .load
     cmp     dword [game_over], GO_NONE
     je      .playing
     cmp     ebx, 'R'
@@ -102,6 +109,12 @@ on_key:
     jmp     .done
 .pause:
     xor     dword [paused], 1
+    jmp     .done
+.save:
+    call    save_game
+    jmp     .done
+.load:
+    call    load_game
     jmp     .done
 .quit:
     mov     dword [running], 0
